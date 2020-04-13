@@ -1,0 +1,23 @@
+Avant d'executer le jeux ouvrez le terminale en plein ecrant.
+Pour démarrer le programme dans la section des crédits, tapez ./jeu -c, ou ./jeu -h si vous souhaitez le démarrer dans le menu d'aide
+Pour construire le programme, lancez simplement make.
+
+Pour aller du menu au jeu, appuyez sur S
+Pour quitter à partir de n'importe quel prix d'écran q
+Pour sauvegarder une partie à tout moment, appuyez sur 0 (zéro)
+pour déplacer la plate-forme, utilisez les flèches
+
+Pour configurer le niveau, changez le fichier de configuration
+sur la première rangée vous avez le nombre de briques (n) et sur le
+n rangs suivants, chaque brique est décrite:
+Exemple:
+
+2
+4 2 2 10 2
+19 2 2 10 2
+
+Cela signifie que vous avez 2 briques. Le premier a ses coordonnées 4 et 2, largeur 2, longueur 10 et résistance 2.
+L'état du jeu est dans le fichier enregistre
+Les meilleurs scores sont dans le fichier lesscores 
+
+Le code principal est dans le fichier brick-breaker.cpp

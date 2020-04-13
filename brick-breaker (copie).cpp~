@@ -1,0 +1,586 @@
+#include "window.h"
+#include "object.h"
+#include "cell.h"
+#include "player.h"
+#include "menu.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <math.h>
+#include <string.h>
+#include <fstream>
+
+using namespace std;
+
+
+void playGame(Window *background, bool loadData);
+void displayBestScores(Window *background);
+
+
+
+char* convert(const char* category, int data)
+{
+	char buff[10];
+	char* info = new char[50];
+	strcpy(info, category);
+	sprintf(buff, "%d", data);
+	strcat(info, buff);
+	return info;
+}
+void printGameStats(Window *background, int level, int score, int balls)
+{
+	char buff[10];
+	char* info;
+	/*strcpy(info, "Level: ");
+	sprintf(buff, "%d", level);
+	strcat(info, buff);*/
+	info = convert("Niveau: ", level);
+	background->print(3, 26, info);
+	info = convert("Le score: ", score);
+	background->print(15, 26, info);
+	info = convert("Balles: ", balls);
+	background->print(33, 26, info);
+	background->print(60, 26, "Appuyez sur H pour de l'aide.");
+}
+void BrickBreaker(int opt)
+{
+	Menu menu;
+	Window *background = new Window(27, 90, 0, 0);
+	background->setCouleurBordure(WBLUE);
+    background->setCouleurFenetre(WBLACK);
+    menu.AffichageMenu(background);
+
+    switch(opt)
+    {
+    	case 1:
+    		menu.AffichageInfo(background);
+    		menu.AffichageMenu(background);
+    		break;
+    	case 2:
+    		menu.AffichageAide(background);
+    		menu.AffichageMenu(background);
+    	default:
+    		break;
+    } 
+
+    char ch;
+    while((ch = getch()) != 'q')
+    {
+    	switch(ch)
+    	{
+    		case 's':    		
+    			playGame(background, false);
+    			menu.AffichageMenu(background);
+    			break;   
+    		case 'h':
+    			background->clear();
+    			displayBestScores(background);
+    			menu.AffichageMenu(background);	
+    			break;	
+    		case 'l':
+    			playGame(background, true);
+    			menu.AffichageMenu(background);	
+    			break;
+    		case 'c':
+    			background->clear();
+    			menu.AffichageInfo(background);
+    			menu.AffichageMenu(background);	
+    			break;
+    	}
+    	
+
+    }
+}
+float magnitude(float x, float y)
+{
+	x = x*x;
+	y = y*y;
+	return sqrt(x+y);
+}
+void printFrame(Window *background, Cell previousScreen[][26], Cell currentScreen[][26])
+{
+	for(int i=0; i<90; i++)
+	{
+		for(int j=0; j<26; j++)
+		{
+			if(currentScreen[i][j].getColor() != previousScreen[i][j].getColor())
+			{
+				background->print(i, j, currentScreen[i][j].getCharacter(), currentScreen[i][j].getColor());
+			}
+		}
+	}
+}
+void addObjectToScreen(Object &object, Cell currentScreen[][26])
+{
+	for(int i=(int)object.getX(); i<(int)object.getX()+object.getWidth(); i++)
+	{
+		for(int j=(int)object.getY(); j<(int)object.getY()+object.getLength(); j++)
+		{
+			currentScreen[i-1][j-1].setColor(object.getColor());
+			currentScreen[i-1][j-1].setCharacter(' ');
+		}
+	}
+	//currentScreen[5][4].setColor(BBLUE);
+    //currentScreen[5][4].setCharacter(' ');
+}
+void resetScreen(Cell screen[][26])
+{
+	for(int i=0; i<90; i++)
+	{
+		for(int j=0; j<26; j++)
+		{
+			screen[i][j].setColor(WBLACK);	
+			screen[i][j].setCharacter(' ');
+		}
+
+	}
+}
+void printLog(string log)
+{
+	fstream f;
+	f.open("log.txt", ios::out);
+	f<<log;
+	f.close();
+}
+bool objectCollide(Object obj1, Object obj2)
+{
+
+	if(obj1.getX() + obj1.getWidth() <= obj2.getX()) return false;
+	if(obj1.getX() >= obj2.getWidth() + obj2.getX()) return false;
+	if(obj1.getY() + obj1.getLength() <= obj2.getY()) return false;
+	if(obj1.getY() >= obj2.getLength() + obj2.getY()+1) return false;
+	return true;
+}
+void generateBricks(Object brick[20], int &number)
+{
+
+	fstream f;
+	f.open("config.txt", ios::in);
+
+	if(f.is_open()){
+		int x, y, l, w, r;
+		f>>number;
+
+		for(int i = 0; i<number; i++)
+		{
+			f>>x>>y>>l>>w>>r;
+			brick[i].setXY(x, y);
+			brick[i].setLength(l);
+			brick[i].setWidth(w);
+			brick[i].setResistance(r);
+			if(r == 1) brick[i].setColor(WMAGENTA);
+			else brick[i].setColor(WRED);
+		}
+	}
+	else
+	{
+		int y = 2;
+		int x = 4;
+		for(int i=0; i<number; i++)
+		{
+			brick[i].setXY(x, y);
+			brick[i].setLength(2);
+			brick[i].setWidth(10);
+			brick[i].setColor(WRED);
+			brick[i].setResistance(2);
+			x+= brick[i].getWidth() + 5;
+			if(x > 85)
+			{
+				x = 4;
+				y += 3;
+			}
+		}
+	}
+}
+bool isLevelClear(Object brick[20], int number)
+{
+	for(int i=0; i<number; i++)
+	{
+		if(brick[i].getResistance() > 0)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+void addToBestScores(int score)
+{
+	if(score == 0)return;
+	// we load the scores we already have saved,
+	//add currentcore, then sort then keep top 5
+	fstream f;
+	f.open("lesscores.txt", ios::in);
+
+	int scores[6];
+	int currentNumberOfScores=0;
+
+	scores[0] = score;
+
+	for(int i=0; i<5; i++)
+	{
+		
+		f>>score;
+		if(f.eof())
+		{
+			break;
+		}
+		currentNumberOfScores++;
+		scores[currentNumberOfScores] = score;
+		
+	}
+	for(int i=0; i<=currentNumberOfScores; i++)
+	{
+		for(int j=0; j<=currentNumberOfScores; j++)
+		{
+			if(scores[i] > scores[j])
+			{
+				int temp = scores[i];
+				scores[i] = scores[j];
+				scores[j] = temp;
+			}
+		}
+	}
+
+	f.close();
+	f.open("lesscores.txt", ios::out);
+	for(int i=0; i<=currentNumberOfScores; i++)
+	{
+		if( i == 5) break;
+		f<<scores[i]<<endl;
+	}
+	
+	f.close();
+}
+
+void displayBestScores(Window *background)
+{
+	char ch;
+	int score;
+	background->clear();
+	background->print(41, 9, "Les scores", BRED);
+
+	fstream f;
+	f.open("lesscores.txt", ios::in);
+
+	for(int i=0; i<5; i++)
+	{
+		
+		f>>score;
+		if(f.eof())
+		{
+			break;
+		}
+		if(score != 0)
+		{
+			background->print(43, 11+i*2, convert("", score));
+		}
+	}
+
+
+	while((ch = getch()) != 'q') {}
+}
+
+
+void playGame(Window *background, bool loadData)
+{
+	Menu menu;
+	int frameRate = 60;
+
+	/*We will retian display data in these 2 matrixes. We will comare them at
+	each frame and print only the changed pixels at each frame */
+	Cell currentScreen[90][26];
+	Cell previousScreen[90][26];
+
+	Object brick[40];
+	Object ball;
+	Object platform;
+
+	Player player;
+
+	bool moving = false;
+	float gameSpeed = 0.5f;
+	int numberOfBricks = 24;
+	bool levelDone = false;
+	player.setLevel(1), player.setScore(0), player.setBalls(5);
+	generateBricks(brick, numberOfBricks);
+	platform.setXY(34, 26);
+
+	string log = "";
+
+	if(loadData == true)
+	{
+		int level, score, balls;
+		float px, py; //platform coord
+		float bx, by; //ball coord
+		float vx, vy;
+		//we override previous data with data read from file
+		fstream f;
+		f.open("enregistre.txt", ios::in);
+		int mov;
+		f>>mov; 
+		if(mov == 1) moving = true;
+		else moving = false;
+		f>>level; player.setLevel(level);
+		f>>score; player.setScore(score);
+		f>>balls; player.setBalls(balls);
+		f>>levelDone;
+		f>>px>>py; platform.setXY(px, py);
+		f>>bx>>by; ball.setXY(bx, by);
+		f>>vx>>vy; ball.setVelXY(vx, vy);
+		f>>gameSpeed;
+		f>>numberOfBricks;
+		for(int i=0; i<numberOfBricks; i++)
+		{
+			int x, y, l, w, r;
+			f>>x>>y>>l>>w>>r;
+			brick[i].setXY(x, y);
+			brick[i].setLength(l);
+			brick[i].setWidth(w);
+			brick[i].setResistance(r);
+			if(r == 1) brick[i].setColor(WMAGENTA);
+			else brick[i].setColor(WRED);
+		}
+		f.close();
+	}
+
+
+	//initial setup
+	resetScreen(previousScreen);
+	resetScreen(currentScreen);
+	platform.setWidth(20); // axe OX
+	platform.setLength(1); // axe OY
+
+	platform.setColor(WGREEN);
+
+
+	ball.setColor(WBLUE);
+	ball.setWidth(1);
+	ball.setLength(1);
+
+
+	background->clear();
+	short int ch;
+	while((ch = getch()) != 'q')
+	{
+		usleep(1000000 / frameRate);
+		//Update gameObjects
+		switch(ch)
+		{
+			case KEY_LEFT:
+			{
+				if(platform.getX()-1 > 0)
+					platform.setX(platform.getX()-3);
+				break;
+			}
+			case KEY_RIGHT:
+			{
+				if(platform.getX()+20 < 91)
+					platform.setX(platform.getX()+3);
+				break;
+			}
+			case 's':
+			{
+				if((player.getBalls() > 0) && levelDone == false)
+				{
+					moving = true;
+					ball.setVelXY(0, -1);
+				}
+				break;
+			}	
+			case 'h':
+			{
+				menu.AffichageAide(background);
+				background->clear();
+				resetScreen(previousScreen);
+
+			}
+			case 'c':
+			{
+				if(player.getBalls()  == 0) return;
+				else
+				{
+					if(levelDone == true)
+					{
+						background->clear();
+						levelDone = false;
+						generateBricks(brick, numberOfBricks);
+						player.setLevel(player.getLevel()+1);
+						gameSpeed *= 1.25;
+						resetScreen(previousScreen);
+					}
+				}
+			}
+			case '0':
+			{
+				fstream f;
+				f.open("enregistre.txt", ios::out);
+				if(moving == true) f<<"1\n";
+				else f<<"0\n";
+
+				f<<player.getLevel()<<"\n";
+				f<<player.getScore()<<"\n";
+				f<<player.getBalls()<<"\n";
+				f<<levelDone<<"\n";
+				f<<platform.getX()<<" "<<platform.getY()<<"\n";
+				f<<ball.getX()<<" "<<ball.getY()<<"\n";
+				f<<ball.getVelX()<<" "<<ball.getVelY()<<"\n";
+				f<<gameSpeed<<"\n";
+				f<<numberOfBricks<<"\n";
+				for(int i=0; i<numberOfBricks; i++)
+				{
+					int x, y;
+					x = brick[i].getX();
+					y = brick[i].getY();
+					f<<x<<" "<<y<<" ";
+					f<<brick[i].getLength()<<" ";
+					f<<brick[i].getWidth()<<" ";
+					f<<brick[i].getResistance()<<"\n";
+				}				
+				f.close();
+				break;
+			}
+			default:
+				break;
+		}	
+
+		if(moving == false)
+		{
+			ball.setXY(platform.getX()+platform.getWidth()/2-1, platform.getY()-1);
+
+		}
+		else
+		{
+			ball.setX(ball.getX() + ball.getVelX() * gameSpeed);
+			ball.setY(ball.getY() + ball.getVelY() * gameSpeed);
+			if(ball.getY() < 0) ball.setY(0);
+
+
+			if(objectCollide(ball, platform) && ball.getY() >25.5f)
+			{
+				log += "Objet frappé\n";
+				if(ball.getX() < platform.getX()+7)
+				{
+					float pozx = ball.getX() - abs((platform.getX()+10-ball.getX()));
+					float pozy = ball.getY()-4;
+					pozx -= ball.getX();
+					pozy -= ball.getY();
+					float mag = magnitude(pozx, pozy);
+					ball.setVelXY(pozx / mag, pozy / mag);
+				}
+				else
+				{
+					if(ball.getX() > platform.getX()+13)
+					{							
+						float pozx = ball.getX() + abs((platform.getX()+10-ball.getX()));
+						float pozy = ball.getY()-8;
+						pozx -= ball.getX();
+						pozy -= ball.getY();
+						float mag = magnitude(pozx, pozy);
+						ball.setVelXY(pozx / mag, pozy / mag);
+					}
+					else
+					{
+						ball.setVelXY(0, -1);
+					}
+				}
+			}
+			else
+			{
+				//check collisions with wall				
+				if( ball.getY() > 26) 
+				{
+					moving = false;
+					player.setBalls(player.getBalls() -1);
+					log+= "Vie perdue\n";
+					if(player.getBalls() == 0)
+					{
+						printLog(log);
+						addToBestScores(player.getScore());
+						menu.AffichagePerdant(background);
+					}
+				}
+				if( ball.getX() < 1) ball.setVelXY(-ball.getVelX(), ball.getVelY());
+				if( ball.getX() > 90) ball.setVelXY(-ball.getVelX(), ball.getVelY());
+				if( ball.getY() < 1) ball.setVelXY(ball.getVelX(), -ball.getVelY());
+
+				//check collison with other objects
+				for(int i=0; i<numberOfBricks; i++)
+				{
+					if((brick[i].getResistance() > 0) && objectCollide(ball, brick[i]))
+					{
+						player.setScore(player.getScore() + 10 * player.getLevel());
+						brick[i].setResistance(brick[i].getResistance()-1);
+						if(brick[i].getResistance() == 1) brick[i].setColor(WMAGENTA);
+						if(ball.getX() < brick[i].getX() + 0.5)
+						{
+							ball.setVelXY(-ball.getVelX(), ball.getVelY());			
+						}
+						else
+						{
+							if(ball.getX() > brick[i].getX() +brick[i].getWidth() -0.5)
+							{
+								ball.setVelXY(-ball.getVelX(), ball.getVelY());
+							}
+							else
+							{
+								ball.setVelXY(ball.getVelX(), -ball.getVelY());
+							} 
+						}
+					}
+				}
+			}
+
+		}
+
+		//Update window and print frame
+		addObjectToScreen(platform, currentScreen);
+		addObjectToScreen(ball, currentScreen);
+		printGameStats(background, player.getLevel(), player.getScore(), player.getBalls());
+		for(int i=0; i<numberOfBricks; i++)
+		{
+			if(brick[i].getResistance() > 0)
+				addObjectToScreen(brick[i], currentScreen);
+		}
+
+		printFrame(background, previousScreen, currentScreen);
+		for(int i=0; i<90; i++)
+		{
+			for(int j=0; j<26; j++)
+			{
+				previousScreen[i][j].setColor(currentScreen[i][j].getColor());
+			}
+
+		}
+		resetScreen(currentScreen);
+
+		if(isLevelClear(brick, numberOfBricks) == true)
+		{			
+			levelDone = true;
+			moving = false;
+			menu.AffichageGagnant(background);
+			printLog(log);
+		}
+	}	
+}
+
+
+
+int main(int argc, char** argv){
+
+
+   int opt;
+   if(argc > 1)
+   {
+	   if(argv[1][1] == 'c')
+	  	    opt = 1;
+	   if(argv[1][1] == 'h')
+	  	    opt = 2;
+	}
+
+
+	startProgramX();
+	BrickBreaker(opt);
+	stopProgramX();
+	return 0;
+}
